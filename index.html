@@ -3130,22 +3130,35 @@ const SHARE_ICO='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" str
 
 /* ======================= Voix plus humaine ======================= */
 let TTSC=null;(async()=>{try{if(window.claude&&window.claude.use)TTSC=await window.claude.use("tts");}catch(e){TTSC=null;}})();
-const VPREF=/(premium|enhanced|amélioré|ameliore|siri|neural|natural|naturelle)/i;
-function frVoices(){try{return speechSynthesis.getVoices().filter(v=>/^fr/i.test(v.lang));}catch(e){return[];}}
-function vScore(v){return(VPREF.test(v.name)?20:0)+(/fr[-_]FR/i.test(v.lang)?4:0)+(/(amélie|amelie|audrey|aurélie|aurelie|thomas|marie|daniel|google)/i.test(v.name)?3:0)+(/compact/i.test(v.name)?-5:0);}
+const VPREF=/(premium|enhanced|amélioré|ameliore|siri|neural|natural|naturelle|online|haute qualit)/i;
+let VCACHE=[];
+function loadVoices(){try{const L=speechSynthesis.getVoices();if(L&&L.length)VCACHE=L;}catch(e){}return VCACHE;}
+function frVoices(){return loadVoices().filter(v=>/^fr/i.test(v.lang));}
+function vScore(v){return(VPREF.test(v.name)?20:0)+(/fr[-_]FR/i.test(v.lang)?4:0)+(/(amélie|amelie|audrey|aurélie|aurelie|thomas|marie|daniel|denise|henri|vivienne|eloise|rémy|remy|google)/i.test(v.name)?3:0)+(v.localService===false?2:0)+(/(compact|eddy|flo|grandma|grandpa|jacques|reed|rocko|sandy|shelley|bad news|bells|bubbles|boing|cellos|jester|organ|trinoids|whisper|zarvox|albert|fred|junior|ralph|kathy|superstar)/i.test(v.name)?-15:0);}
 function bestVoice(){const L=frVoices();if(state.voiceName){const v=L.find(x=>x.name===state.voiceName);if(v)return v;}return L.sort((a,b)=>vScore(b)-vScore(a))[0]||null;}
-try{if(window.speechSynthesis)speechSynthesis.onvoiceschanged=()=>{};}catch(e){}
-function humanize(t){return String(t).replace(/\brép\.?/g,"répétitions").replace(/(\d+) ?s\b/g,"$1 secondes").replace(/(\d+) ?min\b/g,"$1 minutes").replace(/\bXP\b/g,"points d'expérience").replace(/\s+/g," ").trim();}
+try{if(window.speechSynthesis){loadVoices();speechSynthesis.onvoiceschanged=loadVoices;}}catch(e){}
+function humanize(t){return String(t)
+  .replace(/\brép\.?/g,"répétitions")
+  .replace(/\b(\d+):(\d{2})\b/g,(m,a,b)=>(+a)+" minute"+(+a>1?"s":"")+(+b?" "+(+b):""))
+  .replace(/(\d+) ?s\b/g,"$1 secondes").replace(/(\d+) ?min\b/g,"$1 minutes").replace(/(\d+) ?km\b/g,"$1 kilomètres")
+  .replace(/\b0(\d) (secondes|minutes)/g,"$1 $2").replace(/\b1 (seconde|minute|répétition|fois)s?\b/g,"une $1")
+  .replace(/(\d)[.,](\d)/g,"$1 virgule $2").replace(/\+ ?(\d)/g,"plus $1").replace(/×/g," fois ")
+  .replace(/\bXP\b/g,"points d'expérience").replace(/\s+([.!?,])/g,"$1").replace(/\s+/g," ").trim();}
 const useClaudeVoice=()=>!!TTSC&&state.voiceEngine!=="device";
 function duck(on){try{if(typeof MUZ!=="undefined"&&MUZ.el&&!MUZ.el.paused){MUZ.el.volume=(state.muzVol!=null?state.muzVol:.5)*(on?.3:1);}}catch(e){}}
-function say(t){t=humanize(t);if(!t)return;
-  if(useClaudeVoice()){duck(true);TTSC.speak(t,{voice:state.cVoice||"airy",language:"fr",rate:state.vRate||1}).catch(()=>{}).finally(()=>duck(false));return;}
-  try{if(!window.speechSynthesis)return;speechSynthesis.cancel();const v=bestVoice(),parts=t.match(/[^.!?]+[.!?]?/g)||[t];duck(true);
-    parts.forEach((p,i)=>{const u=new SpeechSynthesisUtterance(p.trim());u.lang=v?v.lang:"fr-FR";if(v)u.voice=v;const r=state.vRate||1;
-      u.rate=r*(0.96+Math.random()*.08)*(p.trim().endsWith("!")?1.04:1);u.pitch=(p.trim().endsWith("?")?1.08:1)*(0.98+Math.random()*.06);u.volume=1;
-      if(i===parts.length-1)u.onend=()=>duck(false);speechSynthesis.speak(u);});}catch(e){}}
-const VX={start:["C'est parti pour","On enchaîne avec","Maintenant,","Allez, place à","Au tour de"],enc:["Tu tiens le rythme.","Super, continue comme ça.","Respire bien.","Ça avance très bien.","Reste concentré, c'est du beau travail."],
-  rest:["Repos. Souffle un peu.","Bien joué. On récupère.","Petite pause, tu l'as méritée.","Repos. Détends les épaules."],next:["Ensuite :","Après la pause :","On continue avec"]};
+let SAYID=0;
+function say(t){t=humanize(t);if(!t)return;const id=++SAYID;
+  if(useClaudeVoice()){duck(true);TTSC.speak(t,{voice:state.cVoice||"airy",language:"fr",rate:state.vRate||1}).catch(()=>{}).finally(()=>{if(id===SAYID)duck(false);});return;}
+  try{if(!window.speechSynthesis)return;const busy=speechSynthesis.speaking||speechSynthesis.pending;speechSynthesis.cancel();
+    setTimeout(()=>{if(id!==SAYID)return;const v=bestVoice(),base=state.vRate||1;
+      const parts=(t.match(/[^.!?;]+[.!?;]*/g)||[t]).map(p=>p.trim()).filter(Boolean);if(!parts.length)return;duck(true);
+      parts.forEach((p,i)=>{const u=new SpeechSynthesisUtterance(p);u.lang=v?v.lang:"fr-FR";if(v)u.voice=v;
+        const ex=/!$/.test(p),q=/\?$/.test(p),short=p.split(/\s+/).length<=3;
+        u.rate=Math.min(1.5,base*.97*(ex?1.05:short?.94:1));u.pitch=q?1.1:ex?1.06:(i===parts.length-1&&parts.length>1?.97:1);u.volume=1;
+        if(i===parts.length-1)u.onend=u.onerror=()=>{if(id===SAYID)duck(false);};speechSynthesis.speak(u);});
+    },busy?150:0);}catch(e){}}
+const VX={start:["Allez, c'est parti pour","On enchaîne avec","OK, maintenant,","Allez, place à","À toi de jouer avec","Bon, on passe à","Prochain exercice :"],enc:["Tu tiens bien le rythme.","Super, continue comme ça.","Pense à bien respirer.","Franchement, ça avance bien.","Reste concentré, c'est du beau travail.","Encore une, tu gères.","Je suis fier de toi, continue.","Allez, on lâche rien."],
+  rest:["Repos. Souffle un peu.","Bien joué. On récupère tranquille.","Petite pause, tu l'as bien méritée.","Repos. Relâche les épaules.","Respire profondément, ça redescend.","Bois une gorgée d'eau si tu veux."],next:["Ensuite,","Après la pause,","Juste après, on fait","On continue avec"]};
 function voiceEx(ex,lab,tg){if(!voiceOn()||!W)return;const key=W.key+"|"+W.i+"|"+W.set;if(W._vk===key)return;W._vk=key;const d=dose(ex);
   const what=ex.type==="reps"?tg+" "+(ex.side?"par côté":"répétitions"):ex.type==="hold"?d.reps+" fois "+d.hold+" secondes":d.time+" secondes";
   const cue=(ex.cue||"").split(/[.!]/)[0];
@@ -3157,7 +3170,7 @@ function openVoice(){const L=frVoices().sort((a,b)=>vScore(b)-vScore(a)),cur=bes
   if(TTSC)h+='<h2>Voix Claude (la plus naturelle)</h2><div class="list">'+[["airy","Aérienne"],["buttery","Douce"],["rounded","Chaleureuse"],["glassy","Claire"]].map(([k,n])=>'<button onclick="state.voiceEngine=\'claude\';state.cVoice=\''+k+'\';save();say(\'Salut, c\\\'est Aki. On y va ensemble ?\');openVoice()"><span>'+n+'</span><b>'+(useClaudeVoice()&&(state.cVoice||"airy")===k?"Choisie":"Écouter")+'</b></button>').join("")+'</div>';
   h+='<h2>Voix de l\'appareil</h2>'+(L.length?'<div class="list">'+L.slice(0,8).map(v=>'<button onclick="state.voiceEngine=\'device\';state.voiceName=\''+esc(v.name).replace(/'/g,"\\'")+'\';save();say(\'Salut, c\\\'est Aki. On y va ensemble ?\');openVoice()"><span>'+esc(v.name)+(VPREF.test(v.name)?' <small style="color:#5BD68A">naturelle</small>':'')+'</span><b>'+(!useClaudeVoice()&&cur&&cur.name===v.name?"Choisie":"Écouter")+'</b></button>').join("")+'</div>':'<p class="small">Aucune voix française trouvée sur cet appareil.</p>');
   h+='<h2>Vitesse</h2><div class="seg">'+[[.9,"Posée"],[1,"Normale"],[1.1,"Dynamique"]].map(([v,n])=>'<button class="'+(Math.abs(r-v)<.01?"on":"")+'" onclick="state.vRate='+v+';save();say(\'Voilà, je parle comme ça.\');openVoice()">'+n+'</button>').join("")+'</div>';
-  h+='<div class="card tip" style="margin-top:14px"><b>Pour une voix vraiment humaine sur iPhone et iPad :</b> va dans Réglages, puis Accessibilité, Contenu énoncé, Voix, Français. Télécharge une voix marquée « Premium » ou « Améliorée », comme Amélie ou Thomas, puis choisis-la ici.</div>';
+  h+='<div class="card tip" style="margin-top:14px"><b>Pour une voix vraiment humaine sur iPhone et iPad :</b> va dans Réglages, puis Accessibilité, Contenu énoncé, Voix, Français. Télécharge une voix marquée « Premium » ou « Améliorée », comme Amélie ou Thomas, puis choisis-la ici.<br><br><b>Sur Android :</b> Paramètres, puis Accessibilité, Synthèse vocale, moteur Google. Dans Installer les données vocales, choisis Français et une voix haute qualité, puis relance l\'app.</div>';
   openModal(h);}
 /* ======================= Musique d'entraînement ======================= */
 const MUSX=[{k:"mus_echauf",n:"Échauffement",bpm:112,d:"Douce, pour se mettre en route"},{k:"mus_energie",n:"Énergie",bpm:128,d:"Pour le renforcement et le cardio"},{k:"mus_course",n:"Foulée 165",bpm:165,d:"Calée sur une cadence de course efficace"}];
