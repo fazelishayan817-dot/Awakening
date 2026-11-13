@@ -1231,14 +1231,14 @@ function derived(){const tot={},pr={};let perfect=0;const types=new Set();
   state.sessions.forEach(s=>{if(s.perfect)perfect++;types.add(s.k);Object.entries(s.sets||{}).forEach(([e,a])=>{if(!a.length)return;tot[e]=(tot[e]||0)+a.reduce((x,y)=>x+y,0);const m=Math.max(...a);if(!pr[e]||m>pr[e].v)pr[e]={v:m,d:s.d};});});
   const runs=state.runs||[];const rkm=runs.reduce((a,r)=>a+r.km,0),rmax=runs.reduce((a,r)=>Math.max(a,r.km),0);
   return{nRuns:runs.length,rkm,rmax,nSess:state.sessions.length,tot,pr,perfect,types:types.size,mins:state.acts.filter(a=>a.type!=="posture").reduce((x,a)=>x+(a.min||0),0)+runs.reduce((a,r)=>a+r.sec/60,0),posture:state.acts.filter(a=>a.type==="posture").length,best:bestStreak(),quests:state.qDone,level:lvl(state.xp).l};}
-function afterAction(){let loop=0;while((checkQuests()|checkPath())&&loop<8)loop++;try{checkEngage();}catch(e){console.error(e);}save();renderAll();showEvents();}
+function afterAction(){let loop=0;while((checkQuests()|checkPath())&&loop<8)loop++;try{ensureLevels();}catch(e){}try{checkEngage();}catch(e){console.error(e);}save();renderAll();showEvents();}
 
 /* ======================= feedback ======================= */
 let audio=null;
 function initAudio(){try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();if(audio.state==="suspended")audio.resume();}catch(e){}}
 function beep(f=880,d=.15,v=.16){try{if(!audio)return;const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=f;o.connect(g);g.connect(audio.destination);g.gain.setValueAtTime(v,audio.currentTime);g.gain.exponentialRampToValueAtTime(.001,audio.currentTime+d);o.start();o.stop(audio.currentTime+d);}catch(e){}}
 function chime(){if(typeof sfxOn==='function'&&sfxOn()&&typeof SFXB!=='undefined'){sfx('sfx_win',.5);return;}[660,880,1320].forEach((f,i)=>setTimeout(()=>beep(f,.25,.14),i*120));}
-function vib(p){try{navigator.vibrate&&navigator.vibrate(p);}catch(e){}}
+function vib(p){try{if(navigator.vibrate&&(!navigator.userActivation||navigator.userActivation.hasBeenActive))navigator.vibrate(p);}catch(e){}}
 const icoFor=k=>({fire:I.fire(20,"#FF9F1C"),gem:I.gem(20),ice:I.ice(20),bolt:I.bolt(20),bell:I.bell(18)}[k]||I.bolt(20));
 function toast(ic,t,msg){const el=document.createElement("div");el.className="toast";el.innerHTML='<div class="ti">'+icoFor(ic)+'</div><div><b>'+esc(t)+'</b>'+esc(msg)+'</div>';const T=$("#toasts");T.appendChild(el);while(T.children.length>2)T.firstChild.remove();setTimeout(()=>el.remove(),3500);}
 let ovBusy=false;
@@ -2411,11 +2411,11 @@ const PICO={lesson:'<path d="M6 8v8M18 8v8M3 10v4M21 10v4M6 12h12" stroke="curre
  practice:'<circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="2" fill="none"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/>',
  boss:'<path d="M4 18h16l-1.5-9-4.5 4-2-7-2 7-4.5-4z" fill="currentColor"/>',
  done:'<path d="M5 12l5 5 9-10" stroke="currentColor" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'};
-function renderPath(){$("#counters12").innerHTML=counters();helpTip("helpPath","path");const d=pathDone(),cur=pathCurIdx();const OFF=[0,52,78,52,0,-52,-78,-52];let gi=0;
+function renderPath(){try{ensureLevels();}catch(e){}$("#counters12").innerHTML=counters();helpTip("helpPath","path");const d=pathDone(),cur=pathCurIdx();const OFF=[0,52,78,52,0,-52,-78,-52];let gi=0;
   let h=pathStreakBar();
-  const curLv=cur>=PNODES.length?7:PNODES[cur].lv,vl=pathView==null?curLv:pathView;
+  const curLv=cur>=PNODES.length?PLEVELS.length-1:PNODES[cur].lv,vl=pathView==null?curLv:pathView;
   h+='<div class="lvsel">'+PLEVELS.map((P,li)=>{const lk=li>curLv,dn=UNITS.filter(u=>u.lv===li).every(u=>u.nodes.every(n=>d.includes(n.id)));return '<button class="'+(li===vl?"on":"")+(lk?" lk":"")+'" style="--lc:'+P.c+'" onclick="pathView='+li+';renderPath();window.scrollTo(0,0)"><b>'+(dn?"✓":li+1)+'</b><span>'+P.n+'</span></button>';}).join("")+'</div>'+
-   '<div class="lvhead" style="--lc:'+PLEVELS[vl].c+'"><div class="small" style="color:inherit;font-weight:700;letter-spacing:.08em">NIVEAU '+(vl+1)+' / 8</div><div style="font-size:24px;font-weight:800">'+PLEVELS[vl].n+'</div><div class="small" style="color:#C9C9D0">'+PLEVELS[vl].d+(vl>curLv?" · se débloque après le niveau "+vl:"")+'</div></div>';
+   '<div class="lvhead" style="--lc:'+PLEVELS[vl].c+'"><div class="small" style="color:inherit;font-weight:700;letter-spacing:.08em">NIVEAU '+(vl+1)+(PLEVELS[vl].gen?' · INFINI':' / 8')+'</div><div style="font-size:24px;font-weight:800">'+PLEVELS[vl].n+'</div><div class="small" style="color:#C9C9D0">'+PLEVELS[vl].d+(vl>curLv?" · se débloque après le niveau "+vl:"")+'</div></div>';
   UNITS.forEach((U,ui)=>{if(U.lv!==vl)return;const nd=U.nodes.filter(n=>d.includes(n.id)).length;const locked=PNODES.indexOf(U.nodes[0])>cur;const host=hostOf(ui);const ms=Math.round(unitMastery(U)*100);
     h+='<section class="usec" style="--uc:'+U.c+'"><div class="unit" style="'+(locked?'background:var(--p1);color:var(--muted)':'background:linear-gradient(135deg,'+U.c+','+U.c+'AA);color:#fff')+'"><div class="row" style="gap:10px;align-items:center"><div style="flex:1"><div class="small" style="color:inherit;opacity:.85;font-weight:700">UNITÉ '+(U.dom+1)+' · '+nd+'/'+U.nodes.length+' · maîtrise '+ms+' %</div><div style="font-size:20px;font-weight:800">'+U.n+'</div><div class="small" style="color:inherit;opacity:.9">'+U.d+'</div></div><div>'+castMini(ui,locked)+'</div></div>'+
       (locked?'':'<div class="mbar"><i style="width:'+ms+'%"></i></div>')+'</div>'+(locked?'':'<div class="hostline">'+buddy(host,"idle",30)+'<span>'+hostLine(ui)+'</span></div>')+'<div class="pathcol">';
@@ -2430,7 +2430,7 @@ function renderPath(){$("#counters12").innerHTML=counters();helpTip("helpPath","
     h+='</div></section>';});
   h+=levelTrophy(vl,UNITS.filter(u=>u.lv===vl).every(u=>u.nodes.every(n=>d.includes(n.id))));
   h+=cur>=PNODES.length?'<div class="card" style="text-align:center;margin-top:20px"><div class="row" style="justify-content:center;gap:2px">'+["aki","lili","bao","tank","nox","vif"].map(k=>buddy(k,"cheer",52)).join("")+'</div><div style="font-weight:800;margin-top:8px">Parcours terminé</div><div class="small">Rejoue tes ronds pour les rendre tous légendaires.</div></div>':'';
-  $("#pathBody").innerHTML=h;requestAnimationFrame(()=>{try{drawTrails();revealNodes();}catch(e){console.error(e);}});}
+  $("#pathBody").innerHTML=h;requestAnimationFrame(()=>{try{drawTrails();revealNodes();const ls=document.querySelector("#pathBody .lvsel"),on=ls&&ls.querySelector(".on");if(on)ls.scrollLeft=on.offsetLeft-(ls.clientWidth-on.offsetWidth)/2;}catch(e){console.error(e);}});}
 function scrollToCur(){if(pathView!=null&&pathCurIdx()<PNODES.length&&pathView!==PNODES[pathCurIdx()].lv)return;const c=document.querySelector(".pnode.cur");if(c)c.scrollIntoView({block:"center"});}
 function openNode(id){const N=PNODES.find(n=>n.id===id),idx=PNODES.indexOf(N),cur=pathCurIdx(),isDone=pathDone().includes(id);const U=UNITS[N.u];
   if(idx>cur){toast("bell","Étape verrouillée","Termine d'abord les ronds précédents.");return;}
@@ -2505,7 +2505,7 @@ const HOSTS=["aki","lili","bao","tank","nox","vif","vif","aki"];
 const HOSTLINE=["Je suis Aki. On commence par réveiller ton dos, tout en douceur.","Moi c'est Lili. Une chatte sait se tenir : je t'apprends la posture.","Bao, enchanté. Le gainage, c'est la force tranquille.","Tank ! Ici on devient fort, sans aucun matériel.","Hou hou, je suis Nox. Je veille sur ton sommeil.","Vif, pour te servir. Le cardio, c'est ma passion.","Toujours moi, Vif. Prêt pour tes premiers kilomètres ?","Tous réunis pour ton éveil complet. On est fiers de toi."];
 const hostOf=u=>HOSTS[(UNITS[u]?UNITS[u].dom:u)%8];
 const LVLINE=["","On remet ça, en un peu plus costaud.","Tu prends de l'assurance, j'adore.","On tient plus longtemps cette fois.","Place à la puissance.","Chaque geste compte, vise la perfection.","Le niveau des réguliers. Tu en fais partie.","Le sommet. Peu arrivent jusqu'ici."];
-const hostLine=u=>{const U=UNITS[u];return U.lv?(U.dom===0?"Aki":U.dom===7?"Toute la bande":(BUD[HOSTS[U.dom]]||{n:"Aki"}).n)+" : "+LVLINE[U.lv]:HOSTLINE[u];};
+const hostLine=u=>{const U=UNITS[u];return U.lv?(U.dom===0?"Aki":U.dom===7?"Toute la bande":(BUD[HOSTS[U.dom]]||{n:"Aki"}).n)+" : "+(LVLINE[U.lv]||INF_LINE):HOSTLINE[u];};
 const nodeLv=id=>(state.path.lv||{})[id]||(pathDone().includes(id)?1:0);
 const LVNAME=["","Niveau 1","Niveau 2","Légendaire"];
 function levelUpNode(id){const N=PNODES.find(n=>n.id===id);if(!N)return;state.path.lv=state.path.lv||{};const cur=nodeLv(id);if(cur>=3){toast("bolt","Déjà légendaire","Rejoue quand tu veux pour l'XP");return;}
@@ -2531,7 +2531,7 @@ function renderAll(){try{const nb=document.querySelector('.nav button[data-v="st
 
 /* ======================= live workout ======================= */
 let W=null,tick=null,clockT=null;
-function startWorkout(key){initAudio();closeModal();const pid=key.startsWith("p_")?key.slice(2):null;W={key,o:SESSIONS[key].o,i:0,set:0,phase:"ex",sets:{},tg:{},start:Date.now(),val:null,xp:0,shown:0,extra:pid?Math.min(12,(PNODES.find(n=>n.id===pid)||{lv:0}).lv*1+(pathDone().includes(pid)?Math.min(4,nodeLv(pid)):0)):0};
+function startWorkout(key){initAudio();closeModal();const pid=key.startsWith("p_")?key.slice(2):null;W={key,o:SESSIONS[key].o,i:0,set:0,phase:"ex",sets:{},tg:{},start:Date.now(),val:null,xp:0,shown:0,extra:pid?Math.min(16,lvExtra((PNODES.find(n=>n.id===pid)||{lv:0}).lv)+(pathDone().includes(pid)?Math.min(4,nodeLv(pid)):0)):0};
   $("#wo").classList.remove("hidden");clearInterval(clockT);clockT=setInterval(liveTick,250);renderWo();}
 function quitWo(){if(W&&W.phase!=="done"&&Object.keys(W.sets).length){openModal('<div class="H" style="font-size:22px;font-weight:700">Quitter la séance ?</div><p class="how">Les séries faites ne seront pas enregistrées et la séance ne comptera pas.</p><div class="actions"><button class="btn" onclick="closeModal()">Continuer</button><button class="btn" style="background:var(--red);border:none;color:#fff" onclick="closeModal();reallyQuit()">Quitter</button></div>');return;}reallyQuit();}
 function reallyQuit(){clearInterval(tick);clearInterval(clockT);tick=null;$("#wo").classList.add("hidden");W=null;renderAll();showEvents();}
@@ -2862,6 +2862,43 @@ swipeClose($("#coach"),".chead",()=>closeCoach());
 /* ======================= Hors ligne ======================= */
 if("serviceWorker" in navigator&&/^https?:$/.test(location.protocol)&&!/(claude|anthropic)/.test(location.hostname)){addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(()=>{});});}
 addEventListener("offline",()=>toast("bell","Hors ligne","Pas de souci : Awakening fonctionne sans Internet."));
+/* ======================= Niveaux infinis générés ======================= */
+const INF_NAMES=["Ascension","Titan","Phénix","Tempête","Zénith","Horizon","Apex","Odyssée","Nova","Infini"];
+const INF_COL=["#FF7A3D","#F5A524","#FF5E5B","#E0488B","#B062E8","#7BCB6B","#FFD36B","#4FB3BF","#E8C547","#FF8A4C"];
+const DLAB=["Dos","Posture","Gainage","Force","Sommeil","Cardio","Course","Corps entier"];
+const INF_LINE="Niveau infini : je génère de nouveaux défis rien que pour toi.";
+function roman(n){const T=[[10,"X"],[9,"IX"],[5,"V"],[4,"IV"],[1,"I"]];let o="";T.forEach(([v,r])=>{while(n>=v){o+=r;n-=v;}});return o;}
+function srng(seed){let x=(seed>>>0)||1;return()=>{x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;return x/4294967296;};}
+const shuf=(a,r)=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.floor(r()*(i+1));[a[i],a[j]]=[a[j],a[i]];}return a;};
+const VARS=[{s:"t",n:"tempo lent",cue:"Descends en 3 secondes, remonte en 1 seconde.",f:.7,ty:["reps"]},
+ {s:"p",n:"avec pause",cue:"Marque une pause de 2 secondes au point le plus dur.",f:.75,ty:["reps"]},
+ {s:"u",n:"pulsé",cue:"Ajoute 3 petites pulsations en fin de mouvement.",f:.8,ty:["reps"]},
+ {s:"l",n:"version longue",cue:"Même position, mais tiens plus longtemps en respirant calmement.",f:1.35,ty:["time","hold"]},
+ {s:"x",n:"explosif",cue:"Monte vite et avec contrôle, redescends lentement.",f:.85,ty:["reps"],only:["squat","pushup","lunge","jumpsquat","inclinepush","bridge","calf","dips","pike","burpee"]}];
+function mkVariant(k,v){const id=k+"_"+v.s;if(ALL[id])return id;const B=ALL[k];if(!B||k==="catcow"||!v.ty.includes(B.type)||(v.only&&!v.only.includes(k)))return null;
+  const E=Object.assign({},B,{k:id,base:k,n:B.n+" "+v.n,cue:v.cue+" "+(B.cue||""),gen:true});
+  if(B.type==="reps")E.reps=Math.max(3,Math.round(B.reps*v.f));if(B.type==="time")E.time=Math.max(10,Math.round(B.time*v.f/5)*5);if(B.type==="hold")E.hold=Math.max(3,Math.round(B.hold*v.f));
+  ALL[id]=E;if(F[k])F[id]=F[k];if(F2[k])F2[id]=F2[k];if(FAST[k])FAST[id]=FAST[k];if(MUS[k])MUS[id]=MUS[k];return id;}
+function variantsFor(pool,r,n){const out=[];let g=0;while(out.length<n&&g<40){g++;const k=pool[Math.floor(r()*pool.length)],v=VARS[Math.floor(r()*VARS.length)],id=mkVariant(k,v);if(id&&!out.includes(id))out.push(id);}return out;}
+function genLevel(L){const r=srng(L*7919+13),cyc=Math.floor((L-8)/INF_NAMES.length);
+  const P={n:INF_NAMES[(L-8)%INF_NAMES.length]+" "+roman(cyc+1),d:"Niveau infini, généré pour toi",c:INF_COL[(L-8)%INF_COL.length],gen:true};PLEVELS.push(P);
+  const nv=Math.min(4,2+Math.floor((L-8)/2)),sz=Math.min(6,4+Math.floor((L-8)/4));
+  DOMS.forEach((D,di)=>{const pool=shuf(D.pool.concat(variantsFor(D.pool,r,nv)),r);
+    const pick=s=>{const o=[];for(let j=0;o.length<Math.min(sz,pool.length)&&j<pool.length*2;j++){const k=pool[(s*2+j)%pool.length];if(!o.includes(k))o.push(k);}return o;};
+    const rv=REVIEW[di][L%3],grow=1+(L-7)*.5;
+    const goal=D.pr[0]==="streak"?Math.min(120,7+L*7):D.pr[0]==="runkm"?Math.min(150,5+L*5):Math.min(60,Math.round((D.pr[1]+D.pr[2]*8)*grow));
+    const prName={posture:"Pauses posture",pain:"Check-ins",breath:"Respirations",move:"Minutes actives",sleep:"Nuits notées",runkm:"Kilomètres",streak:"Jours de série"}[D.pr[0]];
+    const km=Math.min(42.2,Math.round((21.1+(L-7)*2.5)*10)/10),boss=D.boss?BS("Épreuve : "+DLAB[di]+" "+P.n,shuf(D.boss.concat(variantsFor(D.boss,r,2)),r).slice(0,Math.min(14,10+Math.floor((L-8)/3)))):
+      D.k==="course"?BS("Épreuve : "+String(km).replace(".",",")+" km d'affilée","runmax",km,"Cours "+String(km).replace(".",",")+" km en une seule sortie."):BS("Épreuve : "+Math.min(60,7+L)+" nuits","sleep",Math.min(60,7+L),"Note "+Math.min(60,7+L)+" nuits dans la page Sommeil.");
+    const nodes=[LS("Circuit Alpha",pick(0)),{t:"learn",n:"Révision",cards:[],q:rv},LS("Circuit Bêta",pick(1)),PR(prName+" : "+goal,D.pr[0],goal,D.pr[3]),CH(),LS("Circuit Gamma",pick(2)),boss];
+    const U={n:DLAB[di]+" · "+P.n,d:DLAB[di]+" · niveau infini "+(L+1)+", circuits et variantes inédites",c:D.c,nodes,lv:L,dom:di,gen:true};const ui=UNITS.push(U)-1;
+    nodes.forEach((N,ni)=>{N.id="L"+(L+1)+"u"+(di+1)+"n"+(ni+1);N.lv=L;N.u=ui;N.i=ni;PNODES.push(N);if(N.ex){SESSIONS["p_"+N.id]={n:N.n+" · "+DLAB[di],o:N.ex,g:"path",d:"Parcours · niveau "+(L+1)+" · unité "+(di+1)};SESSIONS["p_"+N.id].min=estMin(N.ex);}});});}
+function ensureLevels(){let g=0;while(g++<200){const cur=pathCurIdx(),curLv=cur>=PNODES.length?PLEVELS.length:PNODES[cur].lv;if(curLv+1<PLEVELS.length)break;genLevel(PLEVELS.length);}}
+TRO.push({id:"t_inf",n:"Au-delà de la légende",d:"Termine les 8 niveaux et entre dans les niveaux infinis.",c:X=>X.plevels>=8});
+
+const lvExtra=lv=>lv<8?lv:7+Math.floor((lv-7)/2);
+try{ensureLevels();renderAll();}catch(e){console.error(e);}
+
 /* ======================= garde-fous ======================= */
 let errShown=0;function softError(e){console.error(e);if(Date.now()-errShown>60000){errShown=Date.now();try{toast("bell","Petit souci","Aki a corrigé le tir, tu peux continuer.");}catch(x){}}}
 addEventListener("error",e=>softError(e.error||e.message));addEventListener("unhandledrejection",e=>softError(e.reason));
